@@ -1,0 +1,16 @@
+{
+  "name": "comment-boost-ladder",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "login": "node scripts/login-save-cookies.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fs-extra": "^11.2.0",
+    "pino": "^9.5.0",
+    "puppeteer": "^23.7.0"
+  }
+}
