@@ -41,23 +41,23 @@ export async function replyToTweet(page, tweetUrl, text, imagePath) {
     timeout: 90000
   });
 
-  await sleep(2500 + Math.random() * 2000);
+  await sleep(2500);
   await humanScroll(page);
 
   const redReplyButton = 'button[data-testid="reply"]';
 
-  // ✅ Click red reply count button to activate composer
+  // ✅ Click reply counter button to open composer
   let clicked = false;
   for (let i = 0; i < 5; i++) {
     const btn = await page.$(redReplyButton);
     if (btn) {
       await btn.click().catch(() => {});
-      log.info("✅ Red reply button clicked");
       clicked = true;
+      log.info("✅ Red reply button clicked");
       break;
     }
-    await humanScroll(page);
     await sleep(1000);
+    await humanScroll(page);
   }
 
   if (!clicked) {
@@ -65,64 +65,65 @@ export async function replyToTweet(page, tweetUrl, text, imagePath) {
     return false;
   }
 
-  await sleep(2500);
+  await sleep(3000);
 
-  log.info("⬇️ Activating composer input...");
+  log.info("⬇️ Activating composer…");
 
-  // ✅ Click inside composer box until input appears
-  async function enableInput() {
-    for (let i = 0; i < 7; i++) {
-      const composerZones = await page.$$('div[data-testid="replyTextbox"], [role="button"]');
-      for (const zone of composerZones) {
+  // ✅ Click random UI areas within article to activate textbox
+  async function activateComposer() {
+    for (let attempt = 0; attempt < 7; attempt++) {
+      const possibleZones = await page.$$('article div, div[data-testid="replyTextbox"]');
+      for (const zone of possibleZones) {
         const box = await zone.boundingBox();
-        if (box) {
-          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-          await page.mouse.down();
-          await page.mouse.up();
-        }
+        if (!box) continue;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+          .catch(() => {});
       }
-      await sleep(1500);
-      const editor = await page.$('div[contenteditable="true"]');
+      await sleep(2000);
+
+      const editor = await page.$('div[contenteditable="true"], div[role="textbox"]');
       if (editor) return true;
     }
     return false;
   }
 
-  if (!await enableInput()) {
-    log.warn("⚠️ Failed to activate composer — Reply aborted");
+  if (!await activateComposer()) {
+    log.warn("⚠️ Could not activate composer input");
     return false;
   }
 
-  log.info("✅ Input field active");
-  await sleep(1200);
-  await humanType(page, 'div[contenteditable="true"]', text);
-  await sleep(1500 + Math.random() * 1500);
+  log.info("✅ Input field ready");
 
-  // ✅ Optional image upload
+  await sleep(1500);
+  await humanType(page, 'div[contenteditable="true"], div[role="textbox"]', text);
+  await sleep(1500);
+
+  // ✅ Optional image
   if (imagePath) {
     const fileInput = await page.$('input[type="file"][accept*="image"]');
     if (fileInput) {
       try {
         await fileInput.uploadFile(imagePath);
         log.info("📷 Image attached");
-        await sleep(2500 + Math.random() * 2000);
-      } catch (e) {
-        log.warn("⚠️ Image upload failed — continuing");
+        await sleep(3000);
+      } catch {
+        log.warn("⚠️ Image upload failed — text only");
       }
     }
   }
 
-  // ✅ Submit reply button selector
-  const greenSubmit = 'button[data-testid="tweetButtonInline"])';
-  const submitBtn = await page.$(greenSubmit);
+  // ✅ Submit button is SAME testid as the reply button inside composer
+  const submitButton = 'button[data-testid="tweetButtonInline"]';
+  const btn = await page.$(submitButton);
 
-  if (!submitBtn) {
-    log.warn("⚠️ Submit button not found!");
+  if (!btn) {
+    log.warn("⚠️ Submit button missing!");
     return false;
   }
 
-  await submitBtn.click().catch(() => {});
-  await sleep(3500 + Math.random() * 2000);
+  await btn.click().catch(() => {});
+  await sleep(4000);
 
   log.info("✅ Reply submitted successfully!");
   return true;
