@@ -31,58 +31,41 @@ export async function getLatestTweetFromProfile(page, profileUrl) {
   return tweet;
 }
 
-export async function replyToTweet(page, tweetUrl, text, imagePath) {
-  log.info({ tweetUrl }, "Opening tweet to reply");
-  await page.goto(tweetUrl, { waitUntil: "networkidle2", timeout: 90000 });
-  
-  await sleep(2500);
-  await humanScroll(page);
+// ✅ Ensure reply area becomes active
+log.info("⬇️ Activating reply textbox");
 
-  // ✅ Click reply button to open composer
-  const replyBtn = await page.$(SELECTORS.replyButton);
-  if (!replyBtn) {
-    log.warn("⚠ Reply button not found");
-    return false;
-  }
-  await replyBtn.click();
-  log.info("✅ Reply button clicked");
-  await sleep(2500);
+const activationSelectors = [
+  'div[data-testid="tweetTextarea_0RichTextInputContainer"]',
+  'div[aria-label="Post text"]',
+  'div[contenteditable="true"]'
+];
 
-  // ✅ Wait for input field to appear
-  await page.waitForSelector(SELECTORS.inputBox, { visible: true, timeout: 10000 }).catch(() => {});
-  const inputField = await page.$(SELECTORS.inputBox);
-  if (!inputField) {
-    log.warn("⚠ Reply input not found");
-    return false;
-  }
-
-  log.info("✅ Input field ready");
-  await humanType(page, SELECTORS.inputBox, text);
-  await sleep(2000);
-
-  // ✅ Upload image if provided
-  if (imagePath) {
-    const fileInput = await page.$('input[type="file"][accept*="image"]');
-    if (fileInput) {
-      try {
-        await fileInput.uploadFile(imagePath);
-        log.info("📷 Image attached");
-        await sleep(3000);
-      } catch {
-        log.warn("⚠ Image upload failed");
+async function activateReplyBox() {
+  for (let attempt = 0; attempt < 7; attempt++) {
+    for (const sel of activationSelectors) {
+      const boxHandle = await page.$(sel);
+      if (boxHandle) {
+        const box = await boxHandle.boundingBox();
+        if (box) {
+          await page.mouse.move(box.x + box.width / 3, box.y + box.height / 2);
+          await page.mouse.click(box.x + box.width / 3, box.y + box.height / 2);
+        }
       }
     }
-  }
+    await sleep(1500);
 
-  // ✅ Submit reply
-  const submitBtn = await page.$(SELECTORS.submitButton);
-  if (!submitBtn) {
-    log.warn("⚠ Submit button not found");
-    return false;
-  }
-  await submitBtn.click();
-  log.info("✅ Reply submitted!");
+    const editor = await page.$('div[data-testid="tweetTextarea_0"]');
+    if (editor) {
+      log.info("✅ Textbox activated!");
+      return true;
+    }
 
-  await sleep(3000);
-  return true;
+    await humanScroll(page);
+  }
+  return false;
+}
+
+if (!await activateReplyBox()) {
+  log.warn("⚠️ Could not activate reply textbox");
+  return false;
 }
