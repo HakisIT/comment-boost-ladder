@@ -1,9 +1,9 @@
 import { log } from '../utils/logger.js';
 import { humanScroll, sleep, humanType } from '../utils/human.js';
 
-const REPLY_OPEN_SELECTOR = 'button[data-testid="reply"]'; // red reply button
-const SUBMIT_SELECTOR = 'button[data-testid="tweetButtonInline"]'; // green submit button
-const INPUT_SELECTOR = 'div[contenteditable="true"]';
+const RED_REPLY_SELECTOR = 'button[data-testid="reply"]'; // Opens composer
+let INPUT_SELECTOR = 'div[contenteditable="true"]';
+const SUBMIT_SELECTOR = 'button[data-testid="tweetButtonInline"]';
 
 export async function getLatestTweetFromProfile(page, profileUrl) {
   log.info({ profileUrl }, 'Opening profile');
@@ -27,6 +27,7 @@ export async function getLatestTweetFromProfile(page, profileUrl) {
     return null;
   });
 
+  if (!tweet) log.warn('⚠️ No tweets found on profile!');
   return tweet;
 }
 
@@ -35,17 +36,16 @@ export async function replyToTweet(page, tweetUrl, text, imagePath) {
   await page.goto(tweetUrl, { waitUntil: 'networkidle2', timeout: 90000 });
   await sleep(2000 + Math.random() * 2000);
 
-  // Scroll to reveal reply button
   await humanScroll(page);
 
-  // Try clicking reply button up to 5 times with scroll adjustments
+  // ✅ Click red reply button to open inline composer
   let clicked = false;
   for (let i = 0; i < 5; i++) {
-    const replyButton = await page.$(REPLY_OPEN_SELECTOR);
-    if (replyButton) {
-      await replyButton.click().catch(() => {});
+    const btn = await page.$(RED_REPLY_SELECTOR);
+    if (btn) {
+      await btn.click().catch(() => {});
       clicked = true;
-      log.info("✅ Reply button clicked");
+      log.info('✅ Reply button clicked');
       break;
     }
     await humanScroll(page);
@@ -53,44 +53,69 @@ export async function replyToTweet(page, tweetUrl, text, imagePath) {
   }
 
   if (!clicked) {
-    log.warn('⚠️ Could not click red reply button');
+    log.warn('⚠️ Reply button not found!');
     return false;
   }
 
-  // Wait for input box
-  try {
-    await page.waitForSelector(INPUT_SELECTOR, { visible: true, timeout: 20000 });
-  } catch {
-    log.warn("⚠️ Reply input not found");
+  await sleep(2000 + Math.random() * 1500);
+
+  // ✅ Activate inline reply area by clicking inside the reply zone
+  const inlineReply = await page.$('div[data-testid="replyTextbox"]');
+  if (inlineReply) {
+    await inlineReply.click().catch(() => {});
+    await sleep(2000 + Math.random() * 1500);
+    log.info("✅ Inline reply box activated");
+  }
+
+  // ✅ Multiple fallback selectors for input
+  const inputSelectors = [
+    'div[contenteditable="true"]',
+    'div[data-testid="tweetTextarea_0"]',
+    '[role="textbox"][contenteditable="true"]'
+  ];
+
+  let inputReady = false;
+  for (const selector of inputSelectors) {
+    try {
+      await page.waitForSelector(selector, { visible: true, timeout: 5000 });
+      INPUT_SELECTOR = selector;
+      inputReady = true;
+      log.info({ selector }, "✅ Input field ready");
+      break;
+    } catch {}
+  }
+
+  if (!inputReady) {
+    log.warn("⚠️ Reply input not found — stopping");
     return false;
   }
 
-  await sleep(1500);
   await humanType(page, INPUT_SELECTOR, text);
-  await sleep(1000 + Math.random() * 1500);
+  await sleep(1500 + Math.random() * 1500);
 
-  // Upload image (optional)
+  // ✅ Upload image if available
   if (imagePath) {
     const fileInput = await page.$('input[type="file"][accept*="image"]');
     if (fileInput) {
       try {
         await fileInput.uploadFile(imagePath);
         await sleep(2500 + Math.random() * 2000);
+        log.info("📷 Image attached");
       } catch {
-        log.warn('⚠️ Image upload failed → sending text-only');
+        log.warn("⚠️ Image upload failed — continuing text-only");
       }
     }
   }
 
-  // Click green "Reply" to submit
+  // ✅ Click green reply button to submit
   const submitButton = await page.$(SUBMIT_SELECTOR);
-  if (submitButton) {
-    await submitButton.click().catch(() => {});
-    await sleep(3000 + Math.random() * 2000);
-    log.info("✅ Reply submitted successfully!");
-    return true;
+  if (!submitButton) {
+    log.warn("⚠️ Submit button missing!");
+    return false;
   }
+  await submitButton.click().catch(() => {});
+  await sleep(3000 + Math.random() * 2000);
 
-  log.warn("⚠️ Submit button not found");
-  return false;
+  log.info("✅ Reply submitted successfully!");
+  return true;
 }
