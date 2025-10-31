@@ -1,13 +1,9 @@
 import { log } from '../utils/logger.js';
-import { humanScroll, waitVisible, sleep, humanType } from '../utils/human.js';
+import { humanScroll, sleep, humanType } from '../utils/human.js';
 
-/**
- * Extracts the newest tweet link from a profile
- * Returns: { tweetId, url } or null
- */
 export async function getLatestTweetFromProfile(page, profileUrl) {
   log.info({ profileUrl }, 'Opening profile');
-  await page.goto(profileUrl, { waitUntil: 'networkidle2', timeout: 70000 });
+  await page.goto(profileUrl, { waitUntil: 'networkidle2', timeout: 90000 });
 
   await humanScroll(page);
 
@@ -19,102 +15,62 @@ export async function getLatestTweetFromProfile(page, profileUrl) {
       if (!statusLink) continue;
       const match = statusLink.match(/\/status\/(\d+)/);
       if (!match) continue;
-      const href = statusLink.startsWith('http') ? statusLink : `https://x.com${statusLink}`;
-      return { tweetId: match[1], url: href };
+      return {
+        tweetId: match[1],
+        url: `https://x.com${statusLink}`,
+      };
     }
     return null;
   });
 
-  if (!tweet) {
-    log.warn({ profileUrl }, '⚠️ No tweet found. UI selectors may need adjustment.');
-    return null;
-  }
-
+  if (!tweet) log.warn('⚠️ No tweets found — selectors may need update');
   return tweet;
 }
 
-/**
- * Post reply text (+ optional image) to a tweet
- */
 export async function replyToTweet(page, tweetUrl, text, imagePath) {
   log.info({ tweetUrl }, 'Opening tweet to reply');
   await page.goto(tweetUrl, { waitUntil: 'networkidle2', timeout: 90000 });
-  await sleep(2000 + Math.random() * 2000);
-
-  // ✅ Ensure page is scrolled so reply button becomes visible
+  await sleep(2500 + Math.random() * 2000);
   await humanScroll(page);
 
-  // ✅ Retry system for reply button
-  const replySelectors = [
-    'div[data-testid="replyButtonInline"]',
-    'div[data-testid="reply"]',
-    'button[aria-label*="Reply"]',
-    'div[role="button"][aria-label*="Reply"]'
-  ];
+  // ✅ Click the "Reply" button
+  const replyButtonSelector = 'button[data-testid="tweetButtonInline"]';
+  const replyButton = await page.$(replyButtonSelector);
+  if (!replyButton) {
+    log.warn('⚠️ Reply button not found!');
+    return false;
+  }
+  await replyButton.click();
+  await sleep(2000 + Math.random() * 1500);
 
-  async function clickReply() {
-    for (const selector of replySelectors) {
-      const el = await page.$(selector);
-      if (el) {
-        await el.click().catch(() => {});
-        return true;
+  // ✅ Find textarea for typing
+  const inputSelector = 'div[contenteditable="true"]';
+  await page.waitForSelector(inputSelector, { timeout: 20000 });
+  await humanType(page, inputSelector, text);
+  await sleep(1200 + Math.random() * 1500);
+
+  // ✅ Upload image if exists
+  if (imagePath) {
+    const fileInput = await page.$('input[type="file"][accept*="image"]');
+    if (fileInput) {
+      try {
+        await fileInput.uploadFile(imagePath);
+        await sleep(2500 + Math.random() * 2500);
+      } catch {
+        log.warn('⚠️ Image upload failed, text-only reply');
       }
     }
+  }
 
-    // ✅ Fallback: XPath click
-    const [btn] = await page.$x("//div[contains(@aria-label,'Reply') or contains(@data-testid,'reply')]");
-    if (btn) {
-      await btn.click().catch(() => {});
-      return true;
-    }
-
+  // ✅ Submit reply using SAME BUTTON ID
+  const submitButton = await page.$(replyButtonSelector);
+  if (!submitButton) {
+    log.warn('⚠️ Submit button missing!');
     return false;
   }
+  await submitButton.click();
+  await sleep(3000 + Math.random() * 2000);
 
-  let success = false;
-  for (let i = 0; i < 5; i++) {
-    success = await clickReply();
-    if (success) break;
-    await page.mouse.move(200, 200);
-    await page.mouse.wheel({ deltaY: 400 });
-    await sleep(1000);
-  }
-
-  if (!success) {
-    log.warn('⚠️ Could not click reply button — selectors may be updated');
-    return false;
-  }
-
-  await page.waitForSelector('div[contenteditable="true"]', { timeout: 20000 });
-  await sleep(1200 + Math.random() * 1500);
-  await humanType(page, 'div[contenteditable="true"]', text);
-
-  // ✅ Optional image upload
-  if (imagePath) {
-    const handle = await page.$('input[type="file"][accept*="image"]');
-    if (handle) {
-      await handle.uploadFile(imagePath).catch(() => {});
-      await sleep(2000 + Math.random() * 2000);
-    }
-  }
-
-  // ✅ Submit button
-  const sendSelectors = [
-    'div[data-testid="tweetButtonInline"]',
-    'div[data-testid="tweetButton"]',
-    'button[data-testid="tweetButtonInline"]'
-  ];
-
-  for (const selector of sendSelectors) {
-    const btn = await page.$(selector);
-    if (btn) {
-      await btn.click().catch(() => {});
-      await sleep(2000 + Math.random() * 2000);
-      log.info('✅ Reply submitted successfully!');
-      return true;
-    }
-  }
-
-  log.warn('⚠️ Send button not found — selectors outdated.');
-  return false;
+  log.info('✅ Reply submitted successfully!');
+  return true;
 }
