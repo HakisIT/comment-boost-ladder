@@ -38,83 +38,83 @@ export async function getLatestTweetFromProfile(page, profileUrl) {
  */
 export async function replyToTweet(page, tweetUrl, text, imagePath) {
   log.info({ tweetUrl }, 'Opening tweet to reply');
-  await page.goto(tweetUrl, { waitUntil: 'networkidle2', timeout: 70000 });
-  await sleep(1500 + Math.random() * 1500);
+  await page.goto(tweetUrl, { waitUntil: 'networkidle2', timeout: 90000 });
+  await sleep(2000 + Math.random() * 2000);
 
-  // ✅ Improved reply button selectors for new Twitter UI
+  // ✅ Ensure page is scrolled so reply button becomes visible
+  await humanScroll(page);
+
+  // ✅ Retry system for reply button
   const replySelectors = [
-    'div[data-testid="reply"]',
     'div[data-testid="replyButtonInline"]',
-    'div[data-testid="replyButton"]',
-    'button[data-testid="milkdown-toolbar-reply-button"]',
-    'div[aria-label*="Reply"]',
+    'div[data-testid="reply"]',
     'button[aria-label*="Reply"]',
-    'div[data-testid="toolBar"] [aria-label*="Reply"]',
-    'button[role="button"][data-testid="reply"]'
+    'div[role="button"][aria-label*="Reply"]'
   ];
 
-  let clicked = false;
-  for (const selector of replySelectors) {
-    try {
-      const button = await page.$(selector);
-      if (button) {
-        await button.click();
-        clicked = true;
-        break;
+  async function clickReply() {
+    for (const selector of replySelectors) {
+      const el = await page.$(selector);
+      if (el) {
+        await el.click().catch(() => {});
+        return true;
       }
-    } catch {}
-  }
+    }
 
-  if (!clicked) {
-    log.warn('⚠️ Failed to click Reply — selectors may need update.');
+    // ✅ Fallback: XPath click
+    const [btn] = await page.$x("//div[contains(@aria-label,'Reply') or contains(@data-testid,'reply')]");
+    if (btn) {
+      await btn.click().catch(() => {});
+      return true;
+    }
+
     return false;
   }
 
-  await sleep(1000 + Math.random() * 2000);
+  let success = false;
+  for (let i = 0; i < 5; i++) {
+    success = await clickReply();
+    if (success) break;
+    await page.mouse.move(200, 200);
+    await page.mouse.wheel({ deltaY: 400 });
+    await sleep(1000);
+  }
 
-  // ✅ Wait for input field to appear
-  await page.waitForSelector('div[contenteditable="true"]', {
-    timeout: 20000,
-    visible: true
-  });
+  if (!success) {
+    log.warn('⚠️ Could not click reply button — selectors may be updated');
+    return false;
+  }
 
-  // ✅ Type comment like a human
-  await humanType(page, 'div[contenteditable="true"]', text);
+  await page.waitForSelector('div[contenteditable="true"]', { timeout: 20000 });
   await sleep(1200 + Math.random() * 1500);
+  await humanType(page, 'div[contenteditable="true"]', text);
 
-  // ✅ Image upload support
+  // ✅ Optional image upload
   if (imagePath) {
-    const fileInput = await page.$('input[type="file"][accept*="image"]');
-    if (fileInput) {
-      try {
-        await fileInput.uploadFile(imagePath);
-        await sleep(2000 + Math.random() * 2500);
-      } catch (err) {
-        log.warn('⚠️ Image upload failed → sending text only');
-      }
+    const handle = await page.$('input[type="file"][accept*="image"]');
+    if (handle) {
+      await handle.uploadFile(imagePath).catch(() => {});
+      await sleep(2000 + Math.random() * 2000);
     }
   }
 
-  // ✅ Improved submit button selectors
+  // ✅ Submit button
   const sendSelectors = [
-    'div[data-testid="tweetButton"]',
     'div[data-testid="tweetButtonInline"]',
-    'button[data-testid="tweetButtonInline"]',
-    'button[data-testid="dmComposerSendButton"]'
+    'div[data-testid="tweetButton"]',
+    'button[data-testid="tweetButtonInline"]'
   ];
 
   for (const selector of sendSelectors) {
-    try {
-      const btn = await page.$(selector);
-      if (btn) {
-        await btn.click();
-        await sleep(2000 + Math.random() * 2000);
-        log.info('✅ Reply submitted successfully');
-        return true;
-      }
-    } catch {}
+    const btn = await page.$(selector);
+    if (btn) {
+      await btn.click().catch(() => {});
+      await sleep(2000 + Math.random() * 2000);
+      log.info('✅ Reply submitted successfully!');
+      return true;
+    }
   }
 
-  log.warn('⚠️ Reply submit button not found — selectors need update.');
+  log.warn('⚠️ Send button not found — selectors outdated.');
   return false;
 }
