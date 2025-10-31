@@ -15,9 +15,9 @@ export async function getLatestTweetFromProfile(page, profileUrl) {
     const articles = Array.from(document.querySelectorAll('article'));
     for (const a of articles) {
       const anchors = Array.from(a.querySelectorAll('a')).map(el => el.getAttribute('href') || '');
-      const statusLink = anchors.find(h => /\\/status\\/\\d+/.test(h));
+      const statusLink = anchors.find(h => /\/status\/\d+/.test(h));
       if (!statusLink) continue;
-      const match = statusLink.match(/\\/status\\/(\\d+)/);
+      const match = statusLink.match(/\/status\/(\d+)/);
       if (!match) continue;
       return {
         tweetId: match[1],
