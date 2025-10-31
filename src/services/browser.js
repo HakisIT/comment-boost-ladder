@@ -12,7 +12,15 @@ export async function launchBrowser() {
   ];
   const launchOptions = { headless: cfg.headless, args };
   if (cfg.executablePath) launchOptions.executablePath = cfg.executablePath;
-  const browser = await puppeteer.launch(launchOptions);
+  const browser = await puppeteer.launch({
+  headless: cfg.headless === 'true' ? true : false,
+  defaultViewport: { width: 1280, height: 900 },
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-blink-features=AutomationControlled',
+  ]
+});
   log.info({ headless: cfg.headless }, 'Browser launched');
   return browser;
 }
