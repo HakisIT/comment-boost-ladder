@@ -1,37 +1,33 @@
-import { cfg } from './config.js';
+import 'dotenv/config.js';
+import { launchBrowser } from './browser.js';
+import { replyToTweet } from './services/twitter.js';
 import { log } from './utils/logger.js';
-import { readLines, listImages, pickRandom } from './utils/files.js';
-import { initCache, isProcessed, markProcessed } from './storage/cache.js';
-import { launchBrowser, newPageWithCookies } from './services/browser.js';
-import { getLatestTweetFromProfile, replyToTweet } from './services/twitter.js';
-let running = false;
-async function runOnce() {
-  if (running) { return; }
-  running = true;
+import { getRandomComment, getRandomImage, loadProfiles } from './utils/data.js';
+
+(async () => {
   try {
-    await initCache(cfg.processedPath);
-    const profiles = (await readLines(cfg.profilesFile)).slice(0, cfg.maxProfilesPerRun);
-    const comments = await readLines(cfg.commentsFile);
-    const images = await listImages(cfg.imagesDir);
-    if (!profiles.length || !comments.length) { running = false; return; }
-    const browser = await launchBrowser();
-    const page = await newPageWithCookies(browser);
-    let didReply = false;
-    for (const profileUrl of profiles) {
-      try {
-        const latest = await getLatestTweetFromProfile(page, profileUrl);
-        if (!latest) continue;
-        if (isProcessed(latest.tweetId)) continue;
-        await new Promise(r => setTimeout(r, 1000 + Math.random() * 2500));
-        const comment = pickRandom(comments);
-        const maybeImage = images.length ? pickRandom(images) : null;
-        const ok = await replyToTweet(page, latest.url, comment, maybeImage);
-        if (ok) { await markProcessed(latest.tweetId); didReply = true; }
-        if (cfg.oneReplyPerRun && didReply) break;
-        await new Promise(r => setTimeout(r, 2000 + Math.random() * 4000));
-      } catch (err) {}
+    const { page } = await launchBrowser();
+    
+    const commentText = getRandomComment();
+    const imagePath = getRandomImage();
+
+    // ✅ FIXED MODE: reply to one known tweet
+    const fixedTweetUrl = "https://x.com/elonmusk/status/1519480761749016577";
+    log.info({ fixedTweetUrl }, '🎯 Replying to fixed tweet for testing');
+
+    const success = await replyToTweet(page, fixedTweetUrl, commentText, imagePath);
+
+    if (!success) {
+      log.error('❌ Failed to reply. Check VNC screen + logs.');
+      process.exit(1);
     }
-    await browser.close();
-  } catch (err) {} finally { running = false; }
-}
-(async () => { await runOnce(); setInterval(runOnce, cfg.runIntervalMs); })();
+
+    log.info('✅ ✅ ✅ AUTOMATED REPLY SUCCESSFULLY POSTED!');
+    await page.waitForTimeout(3000);
+    process.exit(0);
+
+  } catch (err) {
+    log.error({ err: err.message }, '🔥 FATAL ERROR IN MAIN SCRIPT');
+    process.exit(1);
+  }
+})();
